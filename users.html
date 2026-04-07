@@ -35,8 +35,9 @@
                     <td><span class="badge ${u.role==='Administrator'?'badge-danger':u.role==='Manager'?'badge-warning':'badge-info'}">${u.role}</span></td>
                     <td><span class="badge ${u.status==='Active'?'badge-success':'badge-secondary'}">${u.status}</span></td>
                     <td>${u.dateCreated}</td>
-                    <td>
+                    <td style="display:flex;gap:6px;flex-wrap:wrap">
                       <button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id})">${u.status==='Active'?'Deactivate':'Activate'}</button>
+                      ${u.role !== 'Administrator' ? `<button class="btn btn-sm" style="background:#e74c3c;color:#fff;border:none" onclick="removeUser(${u.id}, '${u.name.replace(/'/g,"\\'")}')">Remove</button>` : ''}
                     </td>
                   </tr>
                 `).join('')}
@@ -87,6 +88,14 @@
       const users = DB.getUsers();
       const u = users.find(x => x.id === id);
       if (u) { u.status = u.status === 'Active' ? 'Inactive' : 'Active'; DB.saveUsers(users); showToast(`User ${u.status === 'Active' ? 'activated' : 'deactivated'}`); renderUsers(); }
+    }
+
+    function removeUser(id, name) {
+      if (!confirm(`Are you sure you want to permanently remove "${name}"? This cannot be undone.`)) return;
+      const users = DB.getUsers().filter(u => u.id !== id);
+      DB.saveUsers(users);
+      showToast(`${name} has been removed`, 'success');
+      renderUsers();
     }
   </script>
 </body>
