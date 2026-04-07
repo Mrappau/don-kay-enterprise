@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderSettings();
+
+    function renderSettings() {
+      const s = DB.getSettings();
+      const content = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+          <div class="card">
+            <div class="card-header"><h3>🏪 Store Information</h3></div>
+            <div class="card-body">
+              <div class="form-group"><label>Store Name</label><input type="text" class="form-control" id="setStoreName" value="${s.storeName}"></div>
+              <div class="form-group"><label>Address</label><input type="text" class="form-control" id="setStoreAddr" value="${s.storeAddress}"></div>
+              <div class="form-group"><label>Phone</label><input type="text" class="form-control" id="setStorePhone" value="${s.storePhone}"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>💰 Tax & Currency</h3></div>
+            <div class="card-body">
+              <div class="form-row">
+                <div class="form-group"><label>Tax Name</label><input type="text" class="form-control" id="setTaxName" value="${s.taxName}"></div>
+                <div class="form-group"><label>Tax Rate (%)</label><input type="number" class="form-control" id="setTaxRate" value="${s.taxRate}" step="0.1"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Currency Code</label><input type="text" class="form-control" id="setCurrency" value="${s.currency}"></div>
+                <div class="form-group"><label>Currency Symbol</label><input type="text" class="form-control" id="setCurrencySymbol" value="${s.currencySymbol}" style="width:80px"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>💳 Paystack Integration</h3></div>
+            <div class="card-body">
+              <div class="form-group">
+                <label>Paystack Public Key</label>
+                <input type="text" class="form-control" id="setPaystackKey" value="${s.paystackPublicKey}" placeholder="pk_test_xxxxx or pk_live_xxxxx">
+              </div>
+              <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
+                Get your API keys from <a href="https://dashboard.paystack.com/#/settings/developers" target="_blank" style="color:var(--primary)">Paystack Dashboard → Settings → API Keys</a>.<br>
+                Use <strong>pk_test_</strong> keys for testing, <strong>pk_live_</strong> for production.
+              </p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>📋 Other Settings</h3></div>
+            <div class="card-body">
+              <div class="form-group"><label>Low Stock Threshold</label><input type="number" class="form-control" id="setLowStock" value="${s.lowStockThreshold}"></div>
+              <div class="form-group"><label>Receipt Footer Message</label><textarea class="form-control" id="setReceiptFooter" rows="3">${s.receiptFooter}</textarea></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="resetSettings()">Reset to Defaults</button>
+          <button class="btn btn-primary btn-lg" onclick="saveSettings()">💾 Save Settings</button>
+        </div>
+
+        <div class="card" style="margin-top:24px">
+          <div class="card-header"><h3>🗄️ Data Management</h3></div>
+          <div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap">
+            <button class="btn btn-outline" onclick="exportData()">📥 Export Data (JSON)</button>
+            <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">📤 Import Data</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+            <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear All Data</button>
+          </div>
+        </div>
+      `;
+      renderPageShell('settings', 'Settings', content);
+    }
+
+    function saveSettings() {
+      const settings = {
+        storeName: document.getElementById('setStoreName').value,
+        storeAddress: document.getElementById('setStoreAddr').value,
+        storePhone: document.getElementById('setStorePhone').value,
+        taxName: document.getElementById('setTaxName').value,
+        taxRate: parseFloat(document.getElementById('setTaxRate').value) || 0,
+        currency: document.getElementById('setCurrency').value,
+        currencySymbol: document.getElementById('setCurrencySymbol').value,
+        paystackPublicKey: document.getElementById('setPaystackKey').value,
+        lowStockThreshold: parseInt(document.getElementById('setLowStock').value) || 10,
+        receiptFooter: document.getElementById('setReceiptFooter').value,
+      };
+      DB.saveSettings(settings);
+      showToast('Settings saved!');
+      renderSettings();
+    }
+
+    function resetSettings() {
+      if (confirm('Reset all settings to defaults?')) {
+        DB.saveSettings(DEFAULT_SETTINGS);
+        showToast('Settings reset!');
+        renderSettings();
+      }
+    }
+
+    function exportData() {
+      const data = { products: DB.getProducts(), customers: DB.getCustomers(), sales: DB.getSales(), users: DB.getUsers(), settings: DB.getSettings() };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pos_backup_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+      showToast('Data exported!');
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.products) DB.saveProducts(data.products);
+          if (data.customers) DB.saveCustomers(data.customers);
+          if (data.sales) DB.saveSales(data.sales);
+          if (data.users) DB.saveUsers(data.users);
+          if (data.settings) DB.saveSettings(data.settings);
+          showToast('Data imported successfully!');
+          renderSettings();
+        } catch { showToast('Invalid file format', 'error'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function clearAllData() {
+      if (confirm('⚠️ This will delete ALL data including products, sales, and customers. Are you sure?')) {
+        localStorage.removeItem('pos_initialized');
+        localStorage.removeItem('pos_products');
+        localStorage.removeItem('pos_sales');
+        localStorage.removeItem('pos_customers');
+        localStorage.removeItem('pos_payments');
+        localStorage.removeItem('pos_inventory_log');
+        DB.init();
+        showToast('All data cleared and reset!');
+        renderSettings();
+      }
+    }
+  </script>
+</body>
+</html>

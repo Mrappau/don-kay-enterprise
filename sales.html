@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderSales();
+
+    function renderSales() {
+      const sales = DB.getSales();
+      const totalRev = sales.reduce((s,x) => s + x.total, 0);
+      const todaySales = DB.getTodaySales();
+      const todayRev = todaySales.reduce((s,x) => s + x.total, 0);
+
+      const content = `
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon blue">💰</div><div><div class="stat-value">${formatCurrency(totalRev)}</div><div class="stat-label">Total Revenue</div></div></div>
+          <div class="stat-card"><div class="stat-icon green">📊</div><div><div class="stat-value">${sales.length}</div><div class="stat-label">Total Transactions</div></div></div>
+          <div class="stat-card"><div class="stat-icon yellow">📅</div><div><div class="stat-value">${formatCurrency(todayRev)}</div><div class="stat-label">Today's Revenue</div></div></div>
+          <div class="stat-card"><div class="stat-icon red">🧾</div><div><div class="stat-value">${todaySales.length}</div><div class="stat-label">Today's Transactions</div></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Sales History</h3></div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Cashier</th><th></th></tr></thead>
+              <tbody>
+                ${sales.length ? [...sales].reverse().map(s => `
+                  <tr>
+                    <td><strong>${s.receiptNo}</strong></td>
+                    <td>${new Date(s.date).toLocaleString()}</td>
+                    <td>${s.customerName || 'Walk-in'}</td>
+                    <td>${s.items.length}</td>
+                    <td><strong>${formatCurrency(s.total)}</strong></td>
+                    <td><span class="badge badge-info">${s.paymentMethod}</span></td>
+                    <td>${s.cashier}</td>
+                    <td><button class="btn btn-outline btn-sm" onclick="viewSale(${s.id})">View</button></td>
+                  </tr>
+                `).join('') : '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">No sales recorded yet</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-overlay" id="saleDetailModal">
+          <div class="modal">
+            <div class="modal-header"><h3>Sale Details</h3><button class="modal-close" onclick="closeModal('saleDetailModal')">&times;</button></div>
+            <div class="modal-body" id="saleDetailContent"></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('saleDetailModal')">Close</button></div>
+          </div>
+        </div>
+      `;
+      renderPageShell('sales', 'Sales', content);
+    }
+
+    function viewSale(id) {
+      const sale = DB.getSales().find(s => s.id === id);
+      if (!sale) return;
+      const settings = DB.getSettings();
+      document.getElementById('saleDetailContent').innerHTML = `
+        <div class="receipt">
+          <h4>${settings.storeName}</h4>
+          <div class="receipt-line"></div>
+          <table>
+            <tr><td><strong>Receipt:</strong></td><td style="text-align:right">${sale.receiptNo}</td></tr>
+            <tr><td><strong>Date:</strong></td><td style="text-align:right">${new Date(sale.date).toLocaleString()}</td></tr>
+            <tr><td><strong>Customer:</strong></td><td style="text-align:right">${sale.customerName}</td></tr>
+            <tr><td><strong>Cashier:</strong></td><td style="text-align:right">${sale.cashier}</td></tr>
+            <tr><td><strong>Payment:</strong></td><td style="text-align:right">${sale.paymentMethod}</td></tr>
+          </table>
+          <div class="receipt-line"></div>
+          <table>
+            <thead><tr><td><strong>Item</strong></td><td style="text-align:center"><strong>Qty</strong></td><td style="text-align:right"><strong>Amount</strong></td></tr></thead>
+            <tbody>${sale.items.map(i=>`<tr><td>${i.name}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">${formatCurrency(i.price*i.quantity)}</td></tr>`).join('')}</tbody>
+          </table>
+          <div class="receipt-line"></div>
+          <table>
+            <tr><td>Subtotal</td><td style="text-align:right">${formatCurrency(sale.subtotal)}</td></tr>
+            <tr><td>${settings.taxName}</td><td style="text-align:right">${formatCurrency(sale.tax)}</td></tr>
+            <tr><td><strong>TOTAL</strong></td><td style="text-align:right"><strong>${formatCurrency(sale.total)}</strong></td></tr>
+          </table>
+        </div>
+      `;
+      openModal('saleDetailModal');
+    }
+  </script>
+</body>
+</html>

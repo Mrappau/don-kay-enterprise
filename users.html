@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderUsers();
+
+    function renderUsers() {
+      const users = DB.getUsers();
+      const content = `
+        <div class="card">
+          <div class="card-header">
+            <h3>System Users (${users.length})</h3>
+            <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+              <tbody>
+                ${users.map(u => `
+                  <tr>
+                    <td><div style="display:flex;align-items:center;gap:10px">
+                      <div class="user-avatar" style="width:32px;height:32px;font-size:12px">${u.name.charAt(0)}</div>
+                      <strong>${u.name}</strong>
+                    </div></td>
+                    <td>${u.email}</td>
+                    <td><span class="badge ${u.role==='Administrator'?'badge-danger':u.role==='Manager'?'badge-warning':'badge-info'}">${u.role}</span></td>
+                    <td><span class="badge ${u.status==='Active'?'badge-success':'badge-secondary'}">${u.status}</span></td>
+                    <td>${u.dateCreated}</td>
+                    <td>
+                      <button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id})">${u.status==='Active'?'Deactivate':'Activate'}</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-overlay" id="addUserModal">
+          <div class="modal">
+            <div class="modal-header"><h3>Add User</h3><button class="modal-close" onclick="closeModal('addUserModal')">&times;</button></div>
+            <div class="modal-body">
+              <div class="form-group"><label>Full Name</label><input type="text" class="form-control" id="newUserName" required></div>
+              <div class="form-group"><label>Email</label><input type="email" class="form-control" id="newUserEmail" required></div>
+              <div class="form-row">
+                <div class="form-group"><label>Password</label><input type="password" class="form-control" id="newUserPass" required></div>
+                <div class="form-group"><label>Role</label>
+                  <select class="form-control" id="newUserRole"><option>Cashier</option><option>Manager</option><option>Administrator</option></select>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" onclick="closeModal('addUserModal')">Cancel</button>
+              <button class="btn btn-primary" onclick="saveNewUser()">Add User</button>
+            </div>
+          </div>
+        </div>
+      `;
+      renderPageShell('users', 'User Management', content);
+    }
+
+    function openAddUser() { openModal('addUserModal'); }
+
+    function saveNewUser() {
+      const name = document.getElementById('newUserName').value.trim();
+      const email = document.getElementById('newUserEmail').value.trim();
+      const password = document.getElementById('newUserPass').value;
+      const role = document.getElementById('newUserRole').value;
+      if (!name || !email || !password) { showToast('All fields required', 'error'); return; }
+      if (DB.getUsers().find(u => u.email === email)) { showToast('Email already exists', 'error'); return; }
+      DB.addUser({ name, email, password, role });
+      showToast('User added!');
+      closeModal('addUserModal');
+      renderUsers();
+    }
+
+    function toggleUserStatus(id) {
+      const users = DB.getUsers();
+      const u = users.find(x => x.id === id);
+      if (u) { u.status = u.status === 'Active' ? 'Inactive' : 'Active'; DB.saveUsers(users); showToast(`User ${u.status === 'Active' ? 'activated' : 'deactivated'}`); renderUsers(); }
+    }
+  </script>
+</body>
+</html>

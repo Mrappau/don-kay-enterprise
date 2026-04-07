@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderReports();
+
+    function renderReports() {
+      const sales = DB.getSales();
+      const products = DB.getProducts();
+      const totalRevenue = sales.reduce((s,x) => s + x.total, 0);
+      const totalTax = sales.reduce((s,x) => s + x.tax, 0);
+      const avgSale = sales.length ? totalRevenue / sales.length : 0;
+
+      // Product performance
+      const productSales = {};
+      sales.forEach(s => s.items.forEach(i => {
+        if (!productSales[i.name]) productSales[i.name] = { name: i.name, qty: 0, revenue: 0 };
+        productSales[i.name].qty += i.quantity;
+        productSales[i.name].revenue += i.price * i.quantity;
+      }));
+      const topProducts = Object.values(productSales).sort((a,b) => b.revenue - a.revenue).slice(0, 10);
+
+      // Payment method breakdown
+      const payMethods = {};
+      sales.forEach(s => { payMethods[s.paymentMethod] = (payMethods[s.paymentMethod] || 0) + s.total; });
+
+      // Daily sales (last 7 days)
+      const dailySales = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const key = d.toLocaleDateString();
+        dailySales[key] = sales.filter(s => new Date(s.date).toLocaleDateString() === key).reduce((sum, s) => sum + s.total, 0);
+      }
+
+      const content = `
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon blue">💰</div><div><div class="stat-value">${formatCurrency(totalRevenue)}</div><div class="stat-label">Total Revenue</div></div></div>
+          <div class="stat-card"><div class="stat-icon green">🧾</div><div><div class="stat-value">${sales.length}</div><div class="stat-label">Transactions</div></div></div>
+          <div class="stat-card"><div class="stat-icon yellow">📊</div><div><div class="stat-value">${formatCurrency(avgSale)}</div><div class="stat-label">Avg Sale</div></div></div>
+          <div class="stat-card"><div class="stat-icon red">🏛️</div><div><div class="stat-value">${formatCurrency(totalTax)}</div><div class="stat-label">Total Tax</div></div></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
+          <div class="card">
+            <div class="card-header"><h3>Daily Revenue (Last 7 Days)</h3></div>
+            <div class="card-body">
+              ${Object.entries(dailySales).map(([date, amount]) => {
+                const maxVal = Math.max(...Object.values(dailySales), 1);
+                const pct = (amount / maxVal) * 100;
+                return `
+                  <div style="margin-bottom:12px">
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+                      <span>${date}</span><strong>${formatCurrency(amount)}</strong>
+                    </div>
+                    <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                      <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:4px;transition:width 0.5s"></div>
+                    </div>
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>Payment Methods</h3></div>
+            <div class="card-body">
+              ${Object.entries(payMethods).length ? Object.entries(payMethods).map(([method, amount]) => {
+                const pct = totalRevenue ? ((amount / totalRevenue) * 100).toFixed(1) : 0;
+                const colors = { Cash: 'var(--success)', Paystack: 'var(--primary)', 'Mobile Money': 'var(--warning)', Card: 'var(--info)' };
+                return `
+                  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                    <div style="width:12px;height:12px;border-radius:3px;background:${colors[method]||'var(--text-muted)'}"></div>
+                    <span style="flex:1;font-size:14px;font-weight:500">${method}</span>
+                    <span style="font-size:14px;font-weight:700">${formatCurrency(amount)}</span>
+                    <span class="badge badge-secondary">${pct}%</span>
+                  </div>`;
+              }).join('') : '<p style="color:var(--text-muted);text-align:center;padding:20px">No payment data yet</p>'}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Top Selling Products</h3></div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
+              <tbody>
+                ${topProducts.length ? topProducts.map((p, i) => `
+                  <tr>
+                    <td><strong>${i+1}</strong></td>
+                    <td><strong>${p.name}</strong></td>
+                    <td>${p.qty}</td>
+                    <td><strong>${formatCurrency(p.revenue)}</strong></td>
+                  </tr>
+                `).join('') : '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No sales data yet</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      renderPageShell('reports', 'Reports & Analytics', content);
+    }
+  </script>
+</body>
+</html>

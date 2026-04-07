@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderDashboard();
+
+    function renderDashboard() {
+      const products = DB.getProducts();
+      const sales = DB.getSales();
+      const customers = DB.getCustomers();
+      const todaySales = DB.getTodaySales();
+      const totalRevenue = DB.getTotalRevenue();
+      const todayRevenue = todaySales.reduce((s, sale) => s + sale.total, 0);
+      const lowStock = products.filter(p => p.quantity <= DB.getSettings().lowStockThreshold);
+
+      const statsHtml = `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon blue">💰</div>
+            <div><div class="stat-value">${formatCurrency(totalRevenue)}</div><div class="stat-label">Total Revenue</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">📦</div>
+            <div><div class="stat-value">${products.length}</div><div class="stat-label">Products</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon yellow">🧾</div>
+            <div><div class="stat-value">${sales.length}</div><div class="stat-label">Total Sales</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon red">👥</div>
+            <div><div class="stat-value">${customers.length}</div><div class="stat-label">Customers</div></div>
+          </div>
+        </div>
+      `;
+
+      const recentSales = sales.slice(-5).reverse();
+      const salesTableHtml = `
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header"><h3>Recent Sales</h3><a href="sales.html" class="btn btn-outline btn-sm">View All</a></div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Receipt</th><th>Date</th><th>Items</th><th>Total</th><th>Payment</th></tr></thead>
+              <tbody>
+                ${recentSales.length ? recentSales.map(s => `
+                  <tr>
+                    <td><strong>${s.receiptNo}</strong></td>
+                    <td>${new Date(s.date).toLocaleString()}</td>
+                    <td>${s.items.length} items</td>
+                    <td><strong>${formatCurrency(s.total)}</strong></td>
+                    <td><span class="badge badge-info">${s.paymentMethod}</span></td>
+                  </tr>
+                `).join('') : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No sales yet. Start selling from the POS terminal!</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      const lowStockHtml = `
+        <div class="card">
+          <div class="card-header"><h3>⚠️ Low Stock Alerts</h3><a href="inventory.html" class="btn btn-outline btn-sm">View Inventory</a></div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Product</th><th>Category</th><th>Stock</th><th>Status</th></tr></thead>
+              <tbody>
+                ${lowStock.length ? lowStock.map(p => `
+                  <tr>
+                    <td>${p.emoji} <strong>${p.name}</strong></td>
+                    <td>${p.category}</td>
+                    <td><strong>${p.quantity}</strong></td>
+                    <td><span class="badge ${p.quantity === 0 ? 'badge-danger' : 'badge-warning'}">${p.quantity === 0 ? 'Out of Stock' : 'Low Stock'}</span></td>
+                  </tr>
+                `).join('') : '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">All products well stocked 👍</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      renderPageShell('dashboard', 'Dashboard', statsHtml + salesTableHtml + lowStockHtml);
+    }
+  </script>
+</body>
+</html>

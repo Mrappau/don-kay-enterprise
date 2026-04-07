@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS Terminal - POS System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://js.paystack.co/v2/inline.js"></script>
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    let cart = [];
+    let selectedCustomer = null;
+    if (user) renderPOS();
+
+    function renderPOS() {
+      const products = DB.getProducts();
+      const categories = DB.getCategories();
+      const customers = DB.getCustomers();
+      const settings = DB.getSettings();
+
+      const content = `
+        <div class="pos-layout">
+          <div class="pos-products card">
+            <div class="card-header">
+              <div class="search-box" style="flex:1;max-width:300px">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="form-control" id="productSearch" placeholder="Search products or scan barcode..." oninput="filterProducts()" style="padding-left:38px">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-sm ${!window.activeCategory ? 'btn-primary' : 'btn-outline'}" onclick="window.activeCategory=null;filterProducts()">All</button>
+                ${categories.map(c => `<button class="btn btn-sm btn-outline" onclick="window.activeCategory='${c}';filterProducts()">${c}</button>`).join('')}
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="product-grid" id="productGrid">
+                ${products.filter(p=>p.quantity>0).map(p => `
+                  <div class="product-card" onclick="addToCart(${p.id})" data-name="${p.name.toLowerCase()}" data-category="${p.category}" data-barcode="${p.barcode}">
+                    <div class="product-emoji">${p.emoji || '📦'}</div>
+                    <div class="product-name">${p.name}</div>
+                    <div class="product-price">${formatCurrency(p.price)}</div>
+                    <div class="product-stock">Stock: ${p.quantity}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+          <div class="pos-cart card">
+            <div class="card-header">
+              <h3>🛒 Cart (${cart.length})</h3>
+              ${cart.length ? `<button class="btn btn-danger btn-sm" onclick="clearCart()">Clear</button>` : ''}
+            </div>
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+              <select class="form-control" id="customerSelect" onchange="selectCustomer(this.value)" style="font-size:13px">
+                <option value="">Walk-in Customer</option>
+                ${customers.map(c => `<option value="${c.id}" ${selectedCustomer && selectedCustomer.id === c.id ? 'selected' : ''}>${c.name} (${c.phone})</option>`).join('')}
+              </select>
+            </div>
+            <div class="cart-items" id="cartItems">
+              ${cart.length ? cart.map((item, i) => `
+                <div class="cart-item">
+                  <div class="cart-item-info">
+                    <div class="cart-item-name">${item.name}</div>
+                    <div class="cart-item-price">${formatCurrency(item.price)} each</div>
+                  </div>
+                  <div class="cart-qty">
+                    <button onclick="updateQty(${i}, -1)">−</button>
+                    <span>${item.quantity}</span>
+                    <button onclick="updateQty(${i}, 1)">+</button>
+                  </div>
+                  <div style="min-width:70px;text-align:right;font-weight:700">${formatCurrency(item.price * item.quantity)}</div>
+                  <button class="cart-remove" onclick="removeFromCart(${i})">✕</button>
+                </div>
+              `).join('') : '<div style="padding:40px;text-align:center;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:12px">🛒</div>Cart is empty<br><small>Click products to add</small></div>'}
+            </div>
+            ${cart.length ? (() => {
+              const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+              const tax = subtotal * settings.taxRate / 100;
+              const total = subtotal + tax;
+              return `
+                <div class="cart-summary">
+                  <div class="cart-row"><span>Subtotal</span><span>${formatCurrency(subtotal)}</span></div>
+                  <div class="cart-row"><span>${settings.taxName} (${settings.taxRate}%)</span><span>${formatCurrency(tax)}</span></div>
+                  <div class="cart-row cart-total"><span>Total</span><span>${formatCurrency(total)}</span></div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+                    <button class="btn btn-success" onclick="checkout('Cash')">💵 Cash</button>
+                    <button class="btn btn-primary" onclick="checkout('Paystack')">💳 Paystack</button>
+                    <button class="btn btn-warning" onclick="checkout('Mobile Money')">📱 MoMo</button>
+                    <button class="btn btn-outline" onclick="checkout('Card')">💳 Card</button>
+                  </div>
+                </div>`;
+            })() : ''}
+          </div>
+        </div>
+
+        <!-- Receipt Modal -->
+        <div class="modal-overlay" id="receiptModal">
+          <div class="modal">
+            <div class="modal-header"><h3>🧾 Receipt</h3><button class="modal-close" onclick="closeModal('receiptModal')">&times;</button></div>
+            <div class="modal-body" id="receiptContent"></div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" onclick="closeModal('receiptModal')">Close</button>
+              <button class="btn btn-primary" onclick="printReceipt()">🖨️ Print Receipt</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      renderPageShell('pos', 'POS Terminal', content);
+    }
+
+    function filterProducts() {
+      const search = document.getElementById('productSearch').value.toLowerCase();
+      const cards = document.querySelectorAll('.product-card');
+      cards.forEach(card => {
+        const matchName = card.dataset.name.includes(search);
+        const matchBarcode = card.dataset.barcode.includes(search);
+        const matchCategory = !window.activeCategory || card.dataset.category === window.activeCategory;
+        card.style.display = (matchName || matchBarcode) && matchCategory ? '' : 'none';
+      });
+    }
+
+    function addToCart(productId) {
+      const product = DB.getProducts().find(p => p.id === productId);
+      if (!product) return;
+      const existing = cart.find(i => i.productId === productId);
+      if (existing) {
+        if (existing.quantity >= product.quantity) { showToast('Not enough stock!', 'error'); return; }
+        existing.quantity++;
+      } else {
+        cart.push({ productId: product.id, name: product.name, price: product.price, quantity: 1 });
+      }
+      renderPOS();
+    }
+
+    function updateQty(index, delta) {
+      cart[index].quantity += delta;
+      const product = DB.getProducts().find(p => p.id === cart[index].productId);
+      if (cart[index].quantity > product.quantity) { cart[index].quantity = product.quantity; showToast('Not enough stock!', 'error'); }
+      if (cart[index].quantity <= 0) cart.splice(index, 1);
+      renderPOS();
+    }
+
+    function removeFromCart(index) { cart.splice(index, 1); renderPOS(); }
+    function clearCart() { cart = []; selectedCustomer = null; renderPOS(); }
+    function selectCustomer(id) { selectedCustomer = id ? DB.getCustomers().find(c => c.id === Number(id)) : null; }
+
+    function checkout(method) {
+      if (!cart.length) return;
+      const settings = DB.getSettings();
+      const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+      const tax = subtotal * settings.taxRate / 100;
+      const total = subtotal + tax;
+
+      function completeSale(paymentMethod, reference) {
+        const sale = DB.addSale({
+          items: [...cart],
+          subtotal, tax, total,
+          paymentMethod,
+          paymentReference: reference || null,
+          customerId: selectedCustomer ? selectedCustomer.id : null,
+          customerName: selectedCustomer ? selectedCustomer.name : 'Walk-in',
+          cashier: user.name,
+        });
+        showReceipt(sale);
+        cart = [];
+        selectedCustomer = null;
+      }
+
+      if (method === 'Paystack') {
+        const email = selectedCustomer ? selectedCustomer.email : (user.email || 'customer@example.com');
+        payWithPaystack(email, total, (response) => {
+          completeSale('Paystack', response.reference);
+        });
+      } else {
+        completeSale(method);
+      }
+    }
+
+    function showReceipt(sale) {
+      const settings = DB.getSettings();
+      document.getElementById('receiptContent').innerHTML = `
+        <div class="receipt">
+          <h4>${settings.storeName}</h4>
+          <p style="text-align:center;font-size:11px;color:#666">${settings.storeAddress}<br>${settings.storePhone}</p>
+          <div class="receipt-line"></div>
+          <table>
+            <tr><td><strong>Receipt:</strong></td><td style="text-align:right">${sale.receiptNo}</td></tr>
+            <tr><td><strong>Date:</strong></td><td style="text-align:right">${new Date(sale.date).toLocaleString()}</td></tr>
+            <tr><td><strong>Cashier:</strong></td><td style="text-align:right">${sale.cashier}</td></tr>
+            <tr><td><strong>Customer:</strong></td><td style="text-align:right">${sale.customerName}</td></tr>
+          </table>
+          <div class="receipt-line"></div>
+          <table>
+            <thead><tr><td><strong>Item</strong></td><td style="text-align:center"><strong>Qty</strong></td><td style="text-align:right"><strong>Amount</strong></td></tr></thead>
+            <tbody>
+              ${sale.items.map(i => `<tr><td>${i.name}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">${formatCurrency(i.price * i.quantity)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="receipt-line"></div>
+          <table>
+            <tr><td>Subtotal</td><td style="text-align:right">${formatCurrency(sale.subtotal)}</td></tr>
+            <tr><td>${settings.taxName} (${settings.taxRate}%)</td><td style="text-align:right">${formatCurrency(sale.tax)}</td></tr>
+            <tr><td><strong style="font-size:16px">TOTAL</strong></td><td style="text-align:right"><strong style="font-size:16px">${formatCurrency(sale.total)}</strong></td></tr>
+          </table>
+          <div class="receipt-line"></div>
+          <p style="text-align:center;font-size:11px"><strong>Payment:</strong> ${sale.paymentMethod}${sale.paymentReference ? ' (Ref: '+sale.paymentReference+')' : ''}</p>
+          <p style="text-align:center;font-size:11px;margin-top:12px">${settings.receiptFooter}</p>
+        </div>
+      `;
+      openModal('receiptModal');
+      renderPOS();
+    }
+
+    function printReceipt() {
+      const content = document.getElementById('receiptContent').innerHTML;
+      const win = window.open('', '_blank', 'width=350,height=600');
+      win.document.write('<html><head><title>Receipt</title><style>body{font-family:monospace;padding:10px}table{width:100%;border-collapse:collapse}td{padding:2px 0;font-size:12px}.receipt-line{border-bottom:1px dashed #ccc;margin:6px 0}h4{margin:0;font-size:14px}p{margin:4px 0}</style></head><body>'+content+'</body></html>');
+      win.document.close();
+      win.print();
+    }
+  </script>
+</body>
+</html>

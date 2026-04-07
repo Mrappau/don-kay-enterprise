@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Products - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderProducts();
+
+    function renderProducts() {
+      const products = DB.getProducts();
+      const categories = DB.getCategories();
+      const content = `
+        <div class="card">
+          <div class="card-header">
+            <h3>All Products (${products.length})</h3>
+            <div style="display:flex;gap:8px">
+              <div class="search-box"><span class="search-icon">🔍</span><input type="text" class="form-control" id="searchProd" placeholder="Search..." oninput="renderProducts()" style="padding-left:38px;width:200px"></div>
+              <button class="btn btn-primary btn-sm" onclick="openModal('addProductModal')">+ Add Product</button>
+            </div>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th></th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Barcode</th><th>Actions</th></tr></thead>
+              <tbody>
+                ${products.filter(p => {
+                  const s = (document.getElementById('searchProd')?.value || '').toLowerCase();
+                  return !s || p.name.toLowerCase().includes(s) || p.category.toLowerCase().includes(s);
+                }).map(p => `
+                  <tr>
+                    <td style="font-size:24px">${p.emoji||'📦'}</td>
+                    <td><strong>${p.name}</strong></td>
+                    <td><span class="badge badge-secondary">${p.category}</span></td>
+                    <td><strong>${formatCurrency(p.price)}</strong></td>
+                    <td><span class="badge ${p.quantity<=10?'badge-danger':'badge-success'}">${p.quantity}</span></td>
+                    <td style="font-size:12px;color:var(--text-muted)">${p.barcode||'-'}</td>
+                    <td>
+                      <button class="btn btn-outline btn-sm" onclick="editProduct(${p.id})">✏️</button>
+                      <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">🗑️</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Add/Edit Product Modal -->
+        <div class="modal-overlay" id="addProductModal">
+          <div class="modal">
+            <div class="modal-header"><h3 id="productModalTitle">Add Product</h3><button class="modal-close" onclick="closeModal('addProductModal')">&times;</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="editProductId">
+              <div class="form-group"><label>Product Name</label><input type="text" class="form-control" id="prodName" placeholder="e.g. Coca Cola 500ml"></div>
+              <div class="form-row">
+                <div class="form-group"><label>Category</label>
+                  <select class="form-control" id="prodCategory">${categories.map(c=>`<option>${c}</option>`).join('')}</select>
+                </div>
+                <div class="form-group"><label>Price</label><input type="number" class="form-control" id="prodPrice" placeholder="0.00" step="0.01"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Quantity</label><input type="number" class="form-control" id="prodQty" placeholder="0"></div>
+                <div class="form-group"><label>Barcode</label><input type="text" class="form-control" id="prodBarcode" placeholder="Barcode number"></div>
+              </div>
+              <div class="form-group"><label>Emoji Icon</label><input type="text" class="form-control" id="prodEmoji" placeholder="📦" maxlength="4" style="width:80px"></div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" onclick="closeModal('addProductModal')">Cancel</button>
+              <button class="btn btn-primary" onclick="saveProduct()">Save Product</button>
+            </div>
+          </div>
+        </div>
+      `;
+      renderPageShell('products', 'Products', content);
+    }
+
+    function saveProduct() {
+      const id = document.getElementById('editProductId').value;
+      const data = {
+        name: document.getElementById('prodName').value.trim(),
+        category: document.getElementById('prodCategory').value,
+        price: parseFloat(document.getElementById('prodPrice').value) || 0,
+        quantity: parseInt(document.getElementById('prodQty').value) || 0,
+        barcode: document.getElementById('prodBarcode').value.trim(),
+        emoji: document.getElementById('prodEmoji').value || '📦',
+      };
+      if (!data.name) { showToast('Product name is required', 'error'); return; }
+      if (id) { DB.updateProduct(Number(id), data); showToast('Product updated!'); }
+      else { DB.addProduct(data); showToast('Product added!'); }
+      closeModal('addProductModal');
+      renderProducts();
+    }
+
+    function editProduct(id) {
+      const p = DB.getProducts().find(x => x.id === id);
+      if (!p) return;
+      document.getElementById('productModalTitle').textContent = 'Edit Product';
+      document.getElementById('editProductId').value = p.id;
+      document.getElementById('prodName').value = p.name;
+      document.getElementById('prodCategory').value = p.category;
+      document.getElementById('prodPrice').value = p.price;
+      document.getElementById('prodQty').value = p.quantity;
+      document.getElementById('prodBarcode').value = p.barcode || '';
+      document.getElementById('prodEmoji').value = p.emoji || '';
+      openModal('addProductModal');
+    }
+
+    function deleteProduct(id) {
+      if (confirm('Are you sure you want to delete this product?')) {
+        DB.deleteProduct(id);
+        showToast('Product deleted!');
+        renderProducts();
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const user = checkAuth();
+    if (user) renderInventory();
+
+    function renderInventory() {
+      const products = DB.getProducts();
+      const settings = DB.getSettings();
+      const totalStock = products.reduce((s,p) => s + p.quantity, 0);
+      const lowStock = products.filter(p => p.quantity > 0 && p.quantity <= settings.lowStockThreshold);
+      const outOfStock = products.filter(p => p.quantity === 0);
+
+      const content = `
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon blue">📦</div><div><div class="stat-value">${totalStock}</div><div class="stat-label">Total Stock Units</div></div></div>
+          <div class="stat-card"><div class="stat-icon green">✅</div><div><div class="stat-value">${products.length - lowStock.length - outOfStock.length}</div><div class="stat-label">Well Stocked</div></div></div>
+          <div class="stat-card"><div class="stat-icon yellow">⚠️</div><div><div class="stat-value">${lowStock.length}</div><div class="stat-label">Low Stock</div></div></div>
+          <div class="stat-card"><div class="stat-icon red">🚫</div><div><div class="stat-value">${outOfStock.length}</div><div class="stat-label">Out of Stock</div></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Inventory Overview</h3>
+            <div class="search-box"><span class="search-icon">🔍</span><input type="text" class="form-control" id="invSearch" placeholder="Search..." oninput="renderInventory()" style="padding-left:38px;width:200px"></div>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th></th><th>Product</th><th>Category</th><th>Stock</th><th>Status</th><th>Restock</th></tr></thead>
+              <tbody>
+                ${products.filter(p => {
+                  const s = (document.getElementById('invSearch')?.value || '').toLowerCase();
+                  return !s || p.name.toLowerCase().includes(s);
+                }).map(p => {
+                  let status, badge;
+                  if (p.quantity === 0) { status = 'Out of Stock'; badge = 'badge-danger'; }
+                  else if (p.quantity <= settings.lowStockThreshold) { status = 'Low Stock'; badge = 'badge-warning'; }
+                  else { status = 'In Stock'; badge = 'badge-success'; }
+                  return `
+                    <tr>
+                      <td style="font-size:20px">${p.emoji||'📦'}</td>
+                      <td><strong>${p.name}</strong></td>
+                      <td>${p.category}</td>
+                      <td><strong>${p.quantity}</strong></td>
+                      <td><span class="badge ${badge}">${status}</span></td>
+                      <td><button class="btn btn-outline btn-sm" onclick="restockProduct(${p.id})">+ Restock</button></td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-overlay" id="restockModal">
+          <div class="modal">
+            <div class="modal-header"><h3>Restock Product</h3><button class="modal-close" onclick="closeModal('restockModal')">&times;</button></div>
+            <div class="modal-body">
+              <p id="restockProductName" style="font-weight:600;margin-bottom:16px"></p>
+              <input type="hidden" id="restockId">
+              <div class="form-group"><label>Quantity to Add</label><input type="number" class="form-control" id="restockQty" min="1" placeholder="Enter quantity"></div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" onclick="closeModal('restockModal')">Cancel</button>
+              <button class="btn btn-success" onclick="confirmRestock()">Confirm Restock</button>
+            </div>
+          </div>
+        </div>
+      `;
+      renderPageShell('inventory', 'Inventory', content);
+    }
+
+    function restockProduct(id) {
+      const p = DB.getProducts().find(x => x.id === id);
+      document.getElementById('restockId').value = id;
+      document.getElementById('restockProductName').textContent = `${p.emoji} ${p.name} — Current stock: ${p.quantity}`;
+      document.getElementById('restockQty').value = '';
+      openModal('restockModal');
+    }
+
+    function confirmRestock() {
+      const id = Number(document.getElementById('restockId').value);
+      const qty = parseInt(document.getElementById('restockQty').value);
+      if (!qty || qty <= 0) { showToast('Enter a valid quantity', 'error'); return; }
+      const p = DB.getProducts().find(x => x.id === id);
+      DB.updateProduct(id, { quantity: p.quantity + qty });
+      showToast(`Restocked ${p.name} with ${qty} units!`);
+      closeModal('restockModal');
+      renderInventory();
+    }
+  </script>
+</body>
+</html>

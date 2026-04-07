@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up - POS System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <h1>🛒 Create Account</h1>
+      <p class="subtitle">Register for a new account</p>
+      <form id="signupForm" onsubmit="handleSignup(event)">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" class="form-control" id="signupName" placeholder="Enter your full name" required>
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" class="form-control" id="signupEmail" placeholder="Enter your email" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" class="form-control" id="signupPhone" placeholder="0241234567">
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <select class="form-control" id="signupRole">
+              <option value="Cashier">Cashier</option>
+              <option value="Manager">Manager</option>
+              <option value="Administrator">Administrator</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" class="form-control" id="signupPassword" placeholder="Min 8 characters" required oninput="checkStrength(this.value)">
+          <div class="password-strength"><div class="password-strength-bar" id="strengthBar"></div></div>
+          <div class="strength-text" id="strengthText"></div>
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" class="form-control" id="signupConfirm" placeholder="Confirm your password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Create Account</button>
+      </form>
+      <p class="auth-footer">Already have an account? <a href="index.html">Sign In</a></p>
+    </div>
+  </div>
+  <script src="data.js"></script>
+  <script>
+    function checkStrength(pw) {
+      let score = 0;
+      if (pw.length >= 8) score++; if (pw.length >= 12) score++;
+      if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+      if (/\d/.test(pw)) score++;
+      if (/[^a-zA-Z0-9]/.test(pw)) score++;
+      const levels = ['Weak','Fair','Good','Strong','Very Strong'];
+      const colors = ['#ef4444','#f59e0b','#eab308','#10b981','#059669'];
+      const pct = Math.min(score, 4) / 4 * 100;
+      document.getElementById('strengthBar').style.width = pct + '%';
+      document.getElementById('strengthBar').style.background = colors[Math.min(score, 4)];
+      document.getElementById('strengthText').textContent = pw ? levels[Math.min(score, 4)] : '';
+      document.getElementById('strengthText').style.color = colors[Math.min(score, 4)];
+    }
+    function handleSignup(e) {
+      e.preventDefault();
+      const name = document.getElementById('signupName').value.trim();
+      const email = document.getElementById('signupEmail').value.trim();
+      const phone = document.getElementById('signupPhone').value.trim();
+      const role = document.getElementById('signupRole').value;
+      const password = document.getElementById('signupPassword').value;
+      const confirm = document.getElementById('signupConfirm').value;
+      if (password.length < 8) { alert('Password must be at least 8 characters'); return; }
+      if (password !== confirm) { alert('Passwords do not match'); return; }
+      const users = DB.getUsers();
+      if (users.find(u => u.email === email)) { alert('Email already registered'); return; }
+      DB.addUser({ name, email, phone, role, password });
+      alert('Account created successfully! Please sign in.');
+      window.location.href = 'index.html';
+    }
+  </script>
+</body>
+</html>
