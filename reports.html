@@ -253,10 +253,10 @@
     ============================================================ */
     function renderInventory(el) {
       const products = DB.getProducts();
-      const totalValue = products.reduce((s,p) => s + (p.price * (p.stock || 0)), 0);
-      const totalCost = products.reduce((s,p) => s + ((p.cost || 0) * (p.stock || 0)), 0);
-      const lowStock = products.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= (p.reorderLevel || 5));
-      const outOfStock = products.filter(p => (p.stock || 0) === 0);
+      const totalValue = products.reduce((s,p) => s + (p.price * Number(p.stock ?? p.quantity ?? 0)), 0);
+      const totalCost = products.reduce((s,p) => s + ((p.cost || 0) * Number(p.stock ?? p.quantity ?? 0)), 0);
+      const lowStock = products.filter(p => Number(p.stock ?? p.quantity ?? 0) > 0 && Number(p.stock ?? p.quantity ?? 0) <= (p.reorderLevel || 5));
+      const outOfStock = products.filter(p => Number(p.stock ?? p.quantity ?? 0) === 0);
 
       el.innerHTML = `
         <div class="kpi-grid">
@@ -271,7 +271,7 @@
           <div class="card-header"><h3>⚠️ Stock Alerts</h3></div>
           <div class="card-body">
             ${outOfStock.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--border,#e2e8f0);display:flex;justify-content:space-between"><span><strong>${p.name}</strong></span><span class="badge" style="background:var(--danger,#ef4444);color:#fff">OUT OF STOCK</span></div>`).join('')}
-            ${lowStock.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--border,#e2e8f0);display:flex;justify-content:space-between"><span><strong>${p.name}</strong> — ${p.stock} left</span><span class="badge" style="background:var(--warning,#f59e0b);color:#fff">LOW STOCK</span></div>`).join('')}
+            ${lowStock.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--border,#e2e8f0);display:flex;justify-content:space-between"><span><strong>${p.name}</strong> — ${p.stock ?? p.quantity ?? 0} left</span><span class="badge" style="background:var(--warning,#f59e0b);color:#fff">LOW STOCK</span></div>`).join('')}
           </div>
         </div>` : ''}
 
@@ -285,7 +285,7 @@
               <thead><tr><th>#</th><th>Product</th><th>Category</th><th>Price</th><th>Cost</th><th>Stock</th><th>Stock Value</th><th>Status</th></tr></thead>
               <tbody>
                 ${products.map((p,i) => {
-                  const stock = p.stock || 0;
+                  const stock = NumberNumber(p.stock ?? p.quantity ?? 0);
                   const statusClass = stock === 0 ? 'stock-out' : stock <= (p.reorderLevel || 5) ? 'stock-low' : 'stock-ok';
                   const statusText = stock === 0 ? 'Out of Stock' : stock <= (p.reorderLevel || 5) ? 'Low Stock' : 'In Stock';
                   return `<tr>
