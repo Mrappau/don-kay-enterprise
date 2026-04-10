@@ -5,6 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reports - POS System</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .report-tabs{display:flex;gap:4px;background:var(--bg-secondary,#f1f5f9);padding:4px;border-radius:10px;margin-bottom:24px;flex-wrap:wrap}
+    .report-tab{padding:10px 18px;border:none;background:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted,#64748b);transition:all .2s}
+    .report-tab:hover{background:rgba(0,0,0,.05)}
+    .report-tab.active{background:var(--primary,#3b82f6);color:#fff;box-shadow:0 2px 8px rgba(59,130,246,.3)}
+    .report-section{display:none}
+    .report-section.active{display:block}
+    .bar-row{margin-bottom:14px}
+    .bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+    .bar-track{height:8px;background:var(--border,#e2e8f0);border-radius:4px;overflow:hidden}
+    .bar-fill{height:100%;border-radius:4px;transition:width .5s}
+    .bar-blue{background:var(--primary,#3b82f6)}
+    .bar-green{background:var(--success,#22c55e)}
+    .bar-yellow{background:var(--warning,#f59e0b)}
+    .bar-red{background:var(--danger,#ef4444)}
+    .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+    .kpi-card{background:var(--bg-primary,#fff);border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:16px;text-align:center}
+    .kpi-value{font-size:22px;font-weight:800;color:var(--text-primary,#1e293b)}
+    .kpi-label{font-size:12px;color:var(--text-muted,#64748b);margin-top:4px}
+    .filter-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .filter-bar input,.filter-bar select{padding:8px 12px;border:1px solid var(--border,#e2e8f0);border-radius:8px;font-size:13px;background:var(--bg-primary,#fff)}
+    .export-btn{padding:8px 16px;background:var(--success,#22c55e);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+    .export-btn:hover{opacity:.85}
+    .stock-low{color:var(--warning,#f59e0b);font-weight:700}
+    .stock-out{color:var(--danger,#ef4444);font-weight:700}
+    .stock-ok{color:var(--success,#22c55e);font-weight:700}
+  </style>
 </head>
 <body>
   <script src="data.js"></script>
@@ -14,99 +41,331 @@
     if (user) renderReports();
 
     function renderReports() {
-      const sales = DB.getSales();
-      const products = DB.getProducts();
-      const totalRevenue = sales.reduce((s,x) => s + x.total, 0);
-      const totalTax = sales.reduce((s,x) => s + x.tax, 0);
-      const avgSale = sales.length ? totalRevenue / sales.length : 0;
-
-      // Product performance
-      const productSales = {};
-      sales.forEach(s => s.items.forEach(i => {
-        if (!productSales[i.name]) productSales[i.name] = { name: i.name, qty: 0, revenue: 0 };
-        productSales[i.name].qty += i.quantity;
-        productSales[i.name].revenue += i.price * i.quantity;
-      }));
-      const topProducts = Object.values(productSales).sort((a,b) => b.revenue - a.revenue).slice(0, 10);
-
-      // Payment method breakdown
-      const payMethods = {};
-      sales.forEach(s => { payMethods[s.paymentMethod] = (payMethods[s.paymentMethod] || 0) + s.total; });
-
-      // Daily sales (last 7 days)
-      const dailySales = {};
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const key = d.toLocaleDateString();
-        dailySales[key] = sales.filter(s => new Date(s.date).toLocaleDateString() === key).reduce((sum, s) => sum + s.total, 0);
-      }
-
       const content = `
-        <div class="stats-grid">
-          <div class="stat-card"><div class="stat-icon blue">💰</div><div><div class="stat-value">${formatCurrency(totalRevenue)}</div><div class="stat-label">Total Revenue</div></div></div>
-          <div class="stat-card"><div class="stat-icon green">🧾</div><div><div class="stat-value">${sales.length}</div><div class="stat-label">Transactions</div></div></div>
-          <div class="stat-card"><div class="stat-icon yellow">📊</div><div><div class="stat-value">${formatCurrency(avgSale)}</div><div class="stat-label">Avg Sale</div></div></div>
-          <div class="stat-card"><div class="stat-icon red">🏛️</div><div><div class="stat-value">${formatCurrency(totalTax)}</div><div class="stat-label">Total Tax</div></div></div>
+        <div class="report-tabs" id="reportTabs">
+          <button class="report-tab active" data-tab="daily" onclick="switchTab('daily')">📅 Daily Sales</button>
+          <button class="report-tab" data-tab="weekly" onclick="switchTab('weekly')">📆 Weekly Sales</button>
+          <button class="report-tab" data-tab="products" onclick="switchTab('products')">📦 Product Performance</button>
+          <button class="report-tab" data-tab="inventory" onclick="switchTab('inventory')">🏪 Inventory</button>
+          <button class="report-tab" data-tab="cashier" onclick="switchTab('cashier')">👤 Cashier Sales</button>
         </div>
+        <div id="reportContent"></div>
+      `;
+      renderPageShell('reports', 'Reports & Analytics', content);
+      switchTab('daily');
+    }
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
-          <div class="card">
-            <div class="card-header"><h3>Daily Revenue (Last 7 Days)</h3></div>
-            <div class="card-body">
-              ${Object.entries(dailySales).map(([date, amount]) => {
-                const maxVal = Math.max(...Object.values(dailySales), 1);
-                const pct = (amount / maxVal) * 100;
-                return `
-                  <div style="margin-bottom:12px">
-                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
-                      <span>${date}</span><strong>${formatCurrency(amount)}</strong>
-                    </div>
-                    <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-                      <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:4px;transition:width 0.5s"></div>
-                    </div>
-                  </div>`;
-              }).join('')}
-            </div>
-          </div>
+    /* ===== Tab Switching ===== */
+    function switchTab(tab) {
+      document.querySelectorAll('.report-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      const container = document.getElementById('reportContent');
+      const renderers = { daily: renderDaily, weekly: renderWeekly, products: renderProducts, inventory: renderInventory, cashier: renderCashier };
+      renderers[tab](container);
+    }
 
-          <div class="card">
-            <div class="card-header"><h3>Payment Methods</h3></div>
-            <div class="card-body">
-              ${Object.entries(payMethods).length ? Object.entries(payMethods).map(([method, amount]) => {
-                const pct = totalRevenue ? ((amount / totalRevenue) * 100).toFixed(1) : 0;
-                const colors = { Cash: 'var(--success)', Paystack: 'var(--primary)', 'Mobile Money': 'var(--warning)', Card: 'var(--info)' };
-                return `
-                  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-                    <div style="width:12px;height:12px;border-radius:3px;background:${colors[method]||'var(--text-muted)'}"></div>
-                    <span style="flex:1;font-size:14px;font-weight:500">${method}</span>
-                    <span style="font-size:14px;font-weight:700">${formatCurrency(amount)}</span>
-                    <span class="badge badge-secondary">${pct}%</span>
-                  </div>`;
-              }).join('') : '<p style="color:var(--text-muted);text-align:center;padding:20px">No payment data yet</p>'}
-            </div>
+    /* ===== Helpers ===== */
+    function toDateStr(d) { return d.toISOString().split('T')[0]; }
+    function fmtDate(d) { return new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+    function pct(v,t){ return t ? ((v/t)*100).toFixed(1) : '0.0'; }
+
+    function exportTableCSV(tableId, filename) {
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      let csv = [];
+      table.querySelectorAll('tr').forEach(row => {
+        const cols = [];
+        row.querySelectorAll('th, td').forEach(cell => cols.push('"' + cell.textContent.trim().replace(/"/g,'""') + '"'));
+        csv.push(cols.join(','));
+      });
+      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename + '.csv'; a.click();
+    }
+
+    /* ============================================================
+       1. DAILY SALES REPORT
+    ============================================================ */
+    function renderDaily(el) {
+      const sales = DB.getSales();
+      const today = new Date();
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today); d.setDate(d.getDate() - i);
+        const key = toDateStr(d);
+        const daySales = sales.filter(s => toDateStr(new Date(s.date)) === key);
+        const revenue = daySales.reduce((s,x) => s + x.total, 0);
+        const tax = daySales.reduce((s,x) => s + x.tax, 0);
+        const items = daySales.reduce((s,x) => s + x.items.reduce((a,b) => a + b.quantity, 0), 0);
+        days.push({ date: fmtDate(d), revenue, tax, transactions: daySales.length, items });
+      }
+      const totalRev = days.reduce((s,d) => s + d.revenue, 0);
+      const totalTx = days.reduce((s,d) => s + d.transactions, 0);
+      const totalItems = days.reduce((s,d) => s + d.items, 0);
+      const totalTax = days.reduce((s,d) => s + d.tax, 0);
+      const maxRev = Math.max(...days.map(d => d.revenue), 1);
+
+      el.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalRev)}</div><div class="kpi-label">7-Day Revenue</div></div>
+          <div class="kpi-card"><div class="kpi-value">${totalTx}</div><div class="kpi-label">Transactions</div></div>
+          <div class="kpi-card"><div class="kpi-value">${totalItems}</div><div class="kpi-label">Items Sold</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalTax)}</div><div class="kpi-label">Tax Collected</div></div>
+        </div>
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header"><h3>Revenue Trend (Last 7 Days)</h3></div>
+          <div class="card-body">
+            ${days.map(d => `
+              <div class="bar-row">
+                <div class="bar-label"><span>${d.date}</span><strong>${formatCurrency(d.revenue)}</strong></div>
+                <div class="bar-track"><div class="bar-fill bar-blue" style="width:${(d.revenue/maxRev)*100}%"></div></div>
+              </div>`).join('')}
           </div>
         </div>
-
         <div class="card">
-          <div class="card-header"><h3>Top Selling Products</h3></div>
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Daily Breakdown</h3>
+            <button class="export-btn" onclick="exportTableCSV('dailyTable','daily_sales')">⬇ Export CSV</button>
+          </div>
           <div class="table-container">
-            <table>
-              <thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
+            <table id="dailyTable">
+              <thead><tr><th>Date</th><th>Transactions</th><th>Items Sold</th><th>Tax</th><th>Revenue</th></tr></thead>
               <tbody>
-                ${topProducts.length ? topProducts.map((p, i) => `
-                  <tr>
-                    <td><strong>${i+1}</strong></td>
-                    <td><strong>${p.name}</strong></td>
-                    <td>${p.qty}</td>
-                    <td><strong>${formatCurrency(p.revenue)}</strong></td>
-                  </tr>
-                `).join('') : '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No sales data yet</td></tr>'}
+                ${days.map(d => `<tr><td>${d.date}</td><td>${d.transactions}</td><td>${d.items}</td><td>${formatCurrency(d.tax)}</td><td><strong>${formatCurrency(d.revenue)}</strong></td></tr>`).join('')}
+                <tr style="font-weight:800;background:var(--bg-secondary,#f8fafc)"><td>Total</td><td>${totalTx}</td><td>${totalItems}</td><td>${formatCurrency(totalTax)}</td><td>${formatCurrency(totalRev)}</td></tr>
               </tbody>
             </table>
           </div>
+        </div>`;
+    }
+
+    /* ============================================================
+       2. WEEKLY SALES REPORT
+    ============================================================ */
+    function renderWeekly(el) {
+      const sales = DB.getSales();
+      const weeks = [];
+      const today = new Date();
+      for (let w = 3; w >= 0; w--) {
+        const end = new Date(today); end.setDate(end.getDate() - w * 7);
+        const start = new Date(end); start.setDate(start.getDate() - 6);
+        const wSales = sales.filter(s => { const d = new Date(s.date); return d >= start && d <= end; });
+        const revenue = wSales.reduce((s,x) => s + x.total, 0);
+        const tax = wSales.reduce((s,x) => s + x.tax, 0);
+        const items = wSales.reduce((s,x) => s + x.items.reduce((a,b) => a + b.quantity, 0), 0);
+        weeks.push({ label: fmtDate(start) + ' – ' + fmtDate(end), revenue, tax, transactions: wSales.length, items });
+      }
+      const totalRev = weeks.reduce((s,w) => s + w.revenue, 0);
+      const maxRev = Math.max(...weeks.map(w => w.revenue), 1);
+      const prevWeek = weeks.length >= 2 ? weeks[weeks.length - 2].revenue : 0;
+      const curWeek = weeks[weeks.length - 1].revenue;
+      const growth = prevWeek ? (((curWeek - prevWeek) / prevWeek) * 100).toFixed(1) : '0.0';
+
+      el.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalRev)}</div><div class="kpi-label">4-Week Revenue</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(curWeek)}</div><div class="kpi-label">This Week</div></div>
+          <div class="kpi-card"><div class="kpi-value">${growth}%</div><div class="kpi-label">Week-over-Week</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalRev / 4)}</div><div class="kpi-label">Avg Weekly</div></div>
         </div>
-      `;
-      renderPageShell('reports', 'Reports & Analytics', content);
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header"><h3>Weekly Revenue Comparison</h3></div>
+          <div class="card-body">
+            ${weeks.map(w => `
+              <div class="bar-row">
+                <div class="bar-label"><span>${w.label}</span><strong>${formatCurrency(w.revenue)}</strong></div>
+                <div class="bar-track"><div class="bar-fill bar-green" style="width:${(w.revenue/maxRev)*100}%"></div></div>
+              </div>`).join('')}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Weekly Details</h3>
+            <button class="export-btn" onclick="exportTableCSV('weeklyTable','weekly_sales')">⬇ Export CSV</button>
+          </div>
+          <div class="table-container">
+            <table id="weeklyTable">
+              <thead><tr><th>Week</th><th>Transactions</th><th>Items</th><th>Tax</th><th>Revenue</th></tr></thead>
+              <tbody>
+                ${weeks.map(w => `<tr><td>${w.label}</td><td>${w.transactions}</td><td>${w.items}</td><td>${formatCurrency(w.tax)}</td><td><strong>${formatCurrency(w.revenue)}</strong></td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    /* ============================================================
+       3. PRODUCT PERFORMANCE REPORT
+    ============================================================ */
+    function renderProducts(el) {
+      const sales = DB.getSales();
+      const products = DB.getProducts();
+      const map = {};
+      sales.forEach(s => s.items.forEach(i => {
+        if (!map[i.name]) map[i.name] = { name: i.name, qty: 0, revenue: 0, transactions: 0, cost: 0 };
+        map[i.name].qty += i.quantity;
+        map[i.name].revenue += i.price * i.quantity;
+        map[i.name].transactions++;
+      }));
+      // attach cost from product catalog
+      products.forEach(p => { if (map[p.name]) map[p.name].cost = (p.cost || 0) * map[p.name].qty; });
+      const list = Object.values(map).sort((a,b) => b.revenue - a.revenue);
+      const totalRev = list.reduce((s,p) => s + p.revenue, 0);
+      const totalQty = list.reduce((s,p) => s + p.qty, 0);
+      const topProduct = list[0] || { name: 'N/A', revenue: 0 };
+
+      el.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-value">${list.length}</div><div class="kpi-label">Products Sold</div></div>
+          <div class="kpi-card"><div class="kpi-value">${totalQty}</div><div class="kpi-label">Total Units</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalRev)}</div><div class="kpi-label">Total Revenue</div></div>
+          <div class="kpi-card"><div class="kpi-value">${topProduct.name}</div><div class="kpi-label">Best Seller</div></div>
+        </div>
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header"><h3>Top 5 Products by Revenue</h3></div>
+          <div class="card-body">
+            ${list.slice(0,5).map(p => `
+              <div class="bar-row">
+                <div class="bar-label"><span>${p.name}</span><strong>${formatCurrency(p.revenue)} (${pct(p.revenue,totalRev)}%)</strong></div>
+                <div class="bar-track"><div class="bar-fill bar-yellow" style="width:${pct(p.revenue,totalRev)}%"></div></div>
+              </div>`).join('')}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>All Products</h3>
+            <button class="export-btn" onclick="exportTableCSV('prodTable','product_performance')">⬇ Export CSV</button>
+          </div>
+          <div class="table-container">
+            <table id="prodTable">
+              <thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Transactions</th><th>Revenue</th><th>% of Total</th><th>Profit</th></tr></thead>
+              <tbody>
+                ${list.length ? list.map((p,i) => {
+                  const profit = p.revenue - p.cost;
+                  return `<tr><td>${i+1}</td><td><strong>${p.name}</strong></td><td>${p.qty}</td><td>${p.transactions}</td><td>${formatCurrency(p.revenue)}</td><td>${pct(p.revenue,totalRev)}%</td><td style="color:${profit>=0?'var(--success,green)':'var(--danger,red)'}">${formatCurrency(profit)}</td></tr>`;
+                }).join('') : '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No sales data</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    /* ============================================================
+       4. INVENTORY REPORT
+    ============================================================ */
+    function renderInventory(el) {
+      const products = DB.getProducts();
+      const totalValue = products.reduce((s,p) => s + (p.price * (p.stock || 0)), 0);
+      const totalCost = products.reduce((s,p) => s + ((p.cost || 0) * (p.stock || 0)), 0);
+      const lowStock = products.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= (p.reorderLevel || 5));
+      const outOfStock = products.filter(p => (p.stock || 0) === 0);
+
+      el.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-value">${products.length}</div><div class="kpi-label">Total Products</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalValue)}</div><div class="kpi-label">Stock Value (Retail)</div></div>
+          <div class="kpi-card"><div class="kpi-value stock-low">${lowStock.length}</div><div class="kpi-label">Low Stock Items</div></div>
+          <div class="kpi-card"><div class="kpi-value stock-out">${outOfStock.length}</div><div class="kpi-label">Out of Stock</div></div>
+        </div>
+
+        ${lowStock.length || outOfStock.length ? `
+        <div class="card" style="margin-bottom:24px;border-left:4px solid var(--warning,#f59e0b)">
+          <div class="card-header"><h3>⚠️ Stock Alerts</h3></div>
+          <div class="card-body">
+            ${outOfStock.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--border,#e2e8f0);display:flex;justify-content:space-between"><span><strong>${p.name}</strong></span><span class="badge" style="background:var(--danger,#ef4444);color:#fff">OUT OF STOCK</span></div>`).join('')}
+            ${lowStock.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--border,#e2e8f0);display:flex;justify-content:space-between"><span><strong>${p.name}</strong> — ${p.stock} left</span><span class="badge" style="background:var(--warning,#f59e0b);color:#fff">LOW STOCK</span></div>`).join('')}
+          </div>
+        </div>` : ''}
+
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Full Inventory</h3>
+            <button class="export-btn" onclick="exportTableCSV('invTable','inventory_report')">⬇ Export CSV</button>
+          </div>
+          <div class="table-container">
+            <table id="invTable">
+              <thead><tr><th>#</th><th>Product</th><th>Category</th><th>Price</th><th>Cost</th><th>Stock</th><th>Stock Value</th><th>Status</th></tr></thead>
+              <tbody>
+                ${products.map((p,i) => {
+                  const stock = p.stock || 0;
+                  const statusClass = stock === 0 ? 'stock-out' : stock <= (p.reorderLevel || 5) ? 'stock-low' : 'stock-ok';
+                  const statusText = stock === 0 ? 'Out of Stock' : stock <= (p.reorderLevel || 5) ? 'Low Stock' : 'In Stock';
+                  return `<tr>
+                    <td>${i+1}</td>
+                    <td><strong>${p.name}</strong></td>
+                    <td>${p.category || '—'}</td>
+                    <td>${formatCurrency(p.price)}</td>
+                    <td>${formatCurrency(p.cost || 0)}</td>
+                    <td><strong>${stock}</strong></td>
+                    <td>${formatCurrency(p.price * stock)}</td>
+                    <td class="${statusClass}">${statusText}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    /* ============================================================
+       5. CASHIER SALES REPORT
+    ============================================================ */
+    function renderCashier(el) {
+      const sales = DB.getSales();
+      const users = DB.getUsers ? DB.getUsers() : [];
+      const cashierMap = {};
+      sales.forEach(s => {
+        const name = s.cashier || s.user || 'Unknown';
+        if (!cashierMap[name]) cashierMap[name] = { name, revenue: 0, transactions: 0, items: 0, tax: 0, refunds: 0 };
+        cashierMap[name].revenue += s.total;
+        cashierMap[name].transactions++;
+        cashierMap[name].items += s.items.reduce((a,b) => a + b.quantity, 0);
+        cashierMap[name].tax += s.tax;
+        if (s.status === 'refunded') cashierMap[name].refunds++;
+      });
+      const list = Object.values(cashierMap).sort((a,b) => b.revenue - a.revenue);
+      const totalRev = list.reduce((s,c) => s + c.revenue, 0);
+      const maxRev = Math.max(...list.map(c => c.revenue), 1);
+      const topCashier = list[0] || { name: 'N/A' };
+
+      el.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-value">${list.length}</div><div class="kpi-label">Active Cashiers</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(totalRev)}</div><div class="kpi-label">Total Revenue</div></div>
+          <div class="kpi-card"><div class="kpi-value">${topCashier.name}</div><div class="kpi-label">Top Performer</div></div>
+          <div class="kpi-card"><div class="kpi-value">${formatCurrency(list.length ? totalRev / list.length : 0)}</div><div class="kpi-label">Avg per Cashier</div></div>
+        </div>
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header"><h3>Cashier Revenue Comparison</h3></div>
+          <div class="card-body">
+            ${list.map(c => `
+              <div class="bar-row">
+                <div class="bar-label"><span>${c.name}</span><strong>${formatCurrency(c.revenue)} (${pct(c.revenue,totalRev)}%)</strong></div>
+                <div class="bar-track"><div class="bar-fill bar-blue" style="width:${(c.revenue/maxRev)*100}%"></div></div>
+              </div>`).join('') || '<p style="text-align:center;padding:20px;color:var(--text-muted)">No sales data</p>'}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Cashier Details</h3>
+            <button class="export-btn" onclick="exportTableCSV('cashierTable','cashier_report')">⬇ Export CSV</button>
+          </div>
+          <div class="table-container">
+            <table id="cashierTable">
+              <thead><tr><th>#</th><th>Cashier</th><th>Transactions</th><th>Items Sold</th><th>Tax Collected</th><th>Revenue</th><th>% Share</th><th>Avg Sale</th></tr></thead>
+              <tbody>
+                ${list.length ? list.map((c,i) => `<tr>
+                  <td>${i+1}</td>
+                  <td><strong>${c.name}</strong></td>
+                  <td>${c.transactions}</td>
+                  <td>${c.items}</td>
+                  <td>${formatCurrency(c.tax)}</td>
+                  <td><strong>${formatCurrency(c.revenue)}</strong></td>
+                  <td>${pct(c.revenue,totalRev)}%</td>
+                  <td>${formatCurrency(c.transactions ? c.revenue / c.transactions : 0)}</td>
+                </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">No sales data</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
     }
   </script>
 </body>
